@@ -1,0 +1,25 @@
+langchain
+langchain-community
+langchain-core
+langchain-classic
+langchain-huggingface
+chromadb
+sentence-transformers
+pypdf
+langchain-google-genai
+google-generativeai
+jq
+python-dotenv
+torch
+langchain-text-splitters
+langchain-openai
+langchain-anthropic
+
+# NEW: added for hybrid retrieval (BM25), semantic chunking, and cross-encoder reranking
+rank_bm25            # powers BM25Retriever (keyword/frequency search)
+langchain-experimental  # powers SemanticChunker (embedding-based chunking)
+
+# NEW: added to expose the pipeline as a web API for the React frontend
+fastapi
+uvicorn[standard]
+pydantic

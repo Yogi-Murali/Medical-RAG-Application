@@ -1,0 +1,24 @@
+# Runs both containers together with one command: `docker compose up --build`
+# This is the "everything works together" test before you ever touch AWS -
+# if it runs correctly here, you know the exact same containers will run
+# correctly on AWS too (that's the whole point of Docker).
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env          # holds GOOGLE_API_KEY - never commit this file
+    volumes:
+      - ./backend/dataset:/app/dataset          # your source documents
+      - ./backend/medical_db:/app/medical_db    # persisted vector store, survives restarts
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:80"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend

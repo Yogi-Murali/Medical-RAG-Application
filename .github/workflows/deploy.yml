@@ -1,0 +1,61 @@
+# --- CI/CD: this is the automation that connects GitHub -> AWS ----------
+# Without this file, pushing to GitHub changes nothing on AWS - you'd have
+# to SSH in and redeploy manually every time. WITH this file, every push to
+# `main` automatically: builds the backend's Docker image, pushes it to
+# Amazon ECR (a Docker image registry, like Docker Hub but AWS-hosted),
+# then SSHes into your EC2 instance and tells it to pull + restart with
+# the new image. That's the literal mechanism behind "commit and it
+# reflects on AWS."
+#
+# SETUP REQUIRED before this works (one-time, in your GitHub repo settings
+# under Settings > Secrets and variables > Actions):
+#   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY - an IAM user with ECR + EC2 permissions
+#   EC2_HOST        - your EC2 instance's public IP or DNS
+#   EC2_SSH_KEY     - the private key (.pem) content, for SSH access
+#   ECR_REPOSITORY  - name of your Amazon ECR repository
+
+name: Deploy Backend to AWS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"          # only run this workflow when backend code changes
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Log in to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+        run: |
+          docker build -t $REGISTRY/$REPOSITORY:latest ./backend
+          docker push $REGISTRY/$REPOSITORY:latest
+
+      - name: SSH into EC2 and redeploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin ${{ steps.ecr-login.outputs.registry }}
+            docker pull ${{ steps.ecr-login.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:latest
+            docker stop medical-rag-backend || true
+            docker rm medical-rag-backend || true
+            docker run -d --name medical-rag-backend -p 8000:8000 --env-file /home/ec2-user/.env ${{ steps.ecr-login.outputs.registry }}/${{ secrets.ECR_REPOSITORY }}:latest
